@@ -66,6 +66,16 @@ refused · 3 halted or errored · 4 another run holds the lock.
 `planning/` · `state.json` · `report.md` · `STOP` (create to halt after the current attempt) ·
 `run.lock`.
 
+## Subscription only (default)
+
+Every session inherits the login of the `claude` binary. By default the orchestrator removes
+`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK` and `CLAUDE_CODE_USE_VERTEX`
+from each session's environment and reads `apiKeySource` from the session's init event. A session
+that reports anything but `none` (a key from the environment, a key helper in project settings)
+halts the run, or fails the plan stage, before the next session starts. Pass `--allow-api-key` to
+permit keys. Under a subscription the usage draws on the plan's 5-hour and weekly windows, not on a
+bill, and `total_cost_usd` in the report is informational.
+
 ## Limits
 
 - The judge files are protected by end-state checks and the ref, not by a sandbox. A session
