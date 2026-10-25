@@ -1,0 +1,35 @@
+{
+  "plan_id": "example-pager",
+  "task": "Fix the off-by-one bug in paginate(): page 1 currently skips the first items.",
+  "base_sha": "",
+  "contract_ref": "refs/contract/example-pager",
+  "global": {
+    "max_cost_usd": 5.0,
+    "max_wall_minutes": 60,
+    "max_attempts_total": 10,
+    "no_progress_limit": 2,
+    "scope_policy": "fail",
+    "strict_receipts": false,
+    "model": "claude-sonnet-5-5",
+    "max_turns": 40,
+    "max_budget_usd_per_attempt": 1.0,
+    "attempt_timeout_s": 600,
+    "allowed_tools": ["Read", "Edit", "Write", "Glob", "Grep", "Bash(python3:*)", "Bash(git add:*)",
+                      "Bash(git commit:*)", "Bash(git diff:*)", "Bash(git status:*)", "Bash(git log:*)"],
+    "constraints": "Python standard library only."
+  },
+  "items": [
+    {
+      "id": "pager-fix",
+      "goal": "paginate() returns the first items on page 1 and the right slice on later pages",
+      "scope": ["src/pager.py"],
+      "judge": {"cmd": "python3 -m unittest discover -s tests", "pass": "exit 0",
+                "paths": ["tests/test_pager.py"], "timeout_s": 120},
+      "target": {"value": "2/2 tests", "state": "proven (tests/test_pager.py)"},
+      "stop_line": 2,
+      "interfaces": "paginate(items, page, per_page=10) -> list; pages are 1-based",
+      "notes": "Do not change the signature or add new exceptions."
+    }
+  ],
+  "next_rung": "Deduplicate rows in report.py with a set instead of a list scan; add tests for report.py."
+}
