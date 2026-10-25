@@ -35,6 +35,7 @@ class RunConfig:
     env: dict[str, str] = field(default_factory=dict)
     tmp_root: Path | None = None
     log: Callable[[str], None] = print
+    auth: str = "subscription"   # see runner.SessionConfig.auth
 
 
 def _pid_alive(pid: int) -> bool:
@@ -163,7 +164,7 @@ class Run:
         return SessionConfig(claude_cmd=list(self.cfg.claude_cmd), model=self.cfg.model or g.model,
                              max_turns=self.cfg.max_turns, max_budget_usd=g.max_budget_usd_per_attempt,
                              timeout_s=g.attempt_timeout_s, allowed_tools=list(g.allowed_tools),
-                             env=dict(self.cfg.env))
+                             env=dict(self.cfg.env), auth=self.cfg.auth)
 
     # ---- main loop ---------------------------------------------------------------------
     def run(self) -> dict[str, Any]:
@@ -265,6 +266,14 @@ class Run:
                 ist["attempts"].append(att)
                 self.state["halt_reason"] = (f"claude produced no output (exit {sess.exit_code}); check the command, "
                                              f"flags and model: {sess.stderr_tail[-300:]!r}")
+                self.save()
+                return False
+            if self.cfg.auth == "subscription" and sess.used_api_key:
+                att = {"n": n, "start_sha": start, "end_sha": gitx.head(wt), "progress": False, "reset": False,
+                       "cost_charged": charged, "session": sess.to_dict(), "verdict": None, "claim": {}}
+                ist["attempts"].append(att)
+                self.state["halt_reason"] = (f"session used an API key ({sess.api_key_source}); this run is "
+                                             "subscription-only (pass --allow-api-key to permit it)")
                 self.save()
                 return False
             verdict = judge_attempt(self.plan, item, self.lock_info, wt, start, sess, self.branch,
