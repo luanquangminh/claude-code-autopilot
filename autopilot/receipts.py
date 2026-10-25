@@ -16,6 +16,7 @@ def norm(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+TRAILING_NOTE = re.compile(r"\s*\([^()]*\)\s*$")
 TOKEN = re.compile(r"[A-Za-z0-9_./:=@+%-]+")
 
 
@@ -55,6 +56,7 @@ def fake_claims(claims: list[str], cmds: list[str]) -> list[str]:
         c = norm(str(raw))
         if not c or PLACEHOLDER.search(c):
             continue
-        if not any(matches(c, cmd) for cmd in cmds):
+        want = TRAILING_NOTE.sub("", c).strip() or c
+        if not any(matches(want, cmd) for cmd in cmds):
             fakes.append(c)
     return fakes
