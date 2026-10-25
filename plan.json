@@ -1,0 +1,63 @@
+{
+  "plan_id": "dogfood-receipts",
+  "task": "Make fake_claims() ignore a trailing parenthetical annotation on a claim, so annotated claims with a matching Bash call are receipted, while claims whose command words never appear stay flagged.",
+  "base_sha": "6967089bcab06aa33fab13b35b8df86f64d92349",
+  "contract_ref": "refs/contract/dogfood-receipts",
+  "global": {
+    "max_cost_usd": 20.0,
+    "max_wall_minutes": 180,
+    "max_attempts_total": 30,
+    "no_progress_limit": 2,
+    "scope_policy": "fail",
+    "strict_receipts": false,
+    "model": "claude-sonnet-5-5",
+    "max_turns": 60,
+    "max_budget_usd_per_attempt": 2.0,
+    "attempt_timeout_s": 1800,
+    "allowed_tools": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash(python3:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)"
+    ],
+    "constraints": "Literal request only: change autopilot/receipts.py only. Do not edit tests/test_receipts.py or tests/test_receipts_annotation.py. Use only the standard library. The full suite must still pass with python3 -m unittest discover -s tests -t ."
+  },
+  "items": [
+    {
+      "id": "ignore-trailing-parenthetical",
+      "goal": "In autopilot/receipts.py, strip a trailing parenthetical note (e.g. ' (denied, not executed)') from a claim before matching in fake_claims(), so the claim is receipted when the command words appear in a Bash tool_use. Still flag a claim whose command words never appear. Reported claim strings for flagged fakes keep their original text.",
+      "scope": [
+        "autopilot/receipts.py"
+      ],
+      "target": {
+        "value": "0 failures in the new annotation tests (3 tests) and the existing test_receipts.py tests (3 tests)",
+        "state": "proven (new test fails today with 1 failure; existing receipts tests pass today)"
+      },
+      "stop_line": 2,
+      "interfaces": "fake_claims(claims: list[str], cmds: list[str]) -> list[str] signature unchanged; matches() and tokens() behavior unchanged for non-annotated input.",
+      "notes": "Only a trailing '(...)' group at the end of the claim is stripped; parentheses elsewhere in the claim are left alone. The judge runs only the two receipts test files because the full suite takes about 38s; the full suite (python3 -m unittest discover -s tests -t .) should still pass after the change.",
+      "judge": {
+        "cmd": "python3 -m unittest discover -s tests -t . -p 'test_receipts_annotation.py' && python3 -m unittest discover -s tests -t . -p 'test_receipts.py'",
+        "paths": [
+          "tests/test_receipts_annotation.py",
+          "tests/test_receipts.py"
+        ],
+        "sha256": {
+          "tests/test_receipts_annotation.py": "435fc827591e6b926f60cf3797798678f8b24387ac34804d49d51b4aeb892695",
+          "tests/test_receipts.py": "e2c3f5dd13af96d36f53dc3c96eccde5484dcb30e166ffe99f1b3d38a9067f4f"
+        },
+        "timeout_s": 600,
+        "canary": null,
+        "pass": "exit 0"
+      }
+    }
+  ],
+  "next_rung": "Normalize other self-report annotations (trailing '# comment', '-> exit 0', or '[...]' notes) and extract this claim cleaning into a shared helper used by both fake_claims and any other consumer of commands_run."
+}
