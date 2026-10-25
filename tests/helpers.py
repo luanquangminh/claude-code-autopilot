@@ -14,13 +14,13 @@ from autopilot.plan import Global, Item, Judge, Plan, Target
 from autopilot.runner import SessionConfig
 
 ROOT = Path(__file__).resolve().parents[1]
-EVALS = ROOT.parent / "ambition-skill" / "evals"
+FIXTURES = ROOT / "tests" / "fixtures"  # copied from samhvw8/ambition-skill evals/<case>/fixture (MIT)
 FAKE = ROOT / "tests" / "fake_claude.py"
 TEST_CMD = "python3 -m unittest discover -s tests"
 
 
 def make_repo(case: str, dest: Path) -> Path:
-    shutil.copytree(EVALS / case / "fixture", dest, dirs_exist_ok=True)
+    shutil.copytree(FIXTURES / case, dest, dirs_exist_ok=True)
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=dest, check=True)
     subprocess.run(["git", "add", "-A"], cwd=dest, check=True)
     subprocess.run(["git", "-c", "user.email=t@local", "-c", "user.name=t", "commit", "-q", "-m", "fixture"],
