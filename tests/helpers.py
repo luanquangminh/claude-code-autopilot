@@ -65,9 +65,9 @@ def fake_env(tmp: Path, scenarios: list) -> dict[str, str]:
             "FAKE_CLAUDE_LOG": str(tmp / "prompts.log")}
 
 
-def fake_run_config(tmp: Path, scenarios: list) -> RunConfig:
+def fake_run_config(tmp: Path, scenarios: list, **cfg) -> RunConfig:
     return RunConfig(run_dir=tmp / "run", claude_cmd=[sys.executable, str(FAKE)], env=fake_env(tmp, scenarios),
-                     tmp_root=tmp, log=lambda s: None, max_turns=10)
+                     tmp_root=tmp, log=lambda s: None, max_turns=10, **cfg)
 
 
 def fake_session_config(tmp: Path, scenarios: list) -> SessionConfig:
@@ -84,10 +84,11 @@ def prompts(tmp: Path) -> str:
     return p.read_text() if p.exists() else ""
 
 
-def full_run(tmp: Path, case: str, items: list[Item], scenarios: list, **glob):
+def full_run(tmp: Path, case: str, items: list[Item], scenarios: list, cfg: dict | None = None, **glob):
+    """`cfg` overrides RunConfig fields; the rest of the keywords override the plan's globals."""
     repo = make_repo(case, tmp / "repo")
     plan = make_plan(f"t-{case}", head(repo), items, **glob)
-    cfg = fake_run_config(tmp, scenarios)
+    cfg = fake_run_config(tmp, scenarios, **(cfg or {}))
     info = lock(plan, repo, cfg.run_dir)
     state = Run(plan, info, repo, cfg).run()
     return plan, info, repo, cfg, state

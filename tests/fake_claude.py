@@ -124,9 +124,8 @@ def main() -> int:
     if name == "dead":                       # the CLI never starts (bad flag, bad model, no auth)
         print("error: unknown option '--bogus'", file=sys.stderr)
         return int(sc.get("exit", 2))
-    # Like the real CLI: a key in the environment wins over the login. FAKE_CLAUDE_KEY_SOURCE forces a value
-    # (a project apiKeyHelper would show up this way).
-    source = os.environ.get("FAKE_CLAUDE_KEY_SOURCE") or ("ANTHROPIC_API_KEY" if os.environ.get("ANTHROPIC_API_KEY") else "none")
+    # Like the real CLI, a key in the environment wins over the login; FAKE_CLAUDE_KEY_SOURCE forces a value.
+    source = os.environ.get("FAKE_CLAUDE_KEY_SOURCE") or ("ANTHROPIC_API_KEY" if "ANTHROPIC_API_KEY" in os.environ else "none")
     emit({"type": "system", "subtype": "init", "session_id": str(uuid.uuid4()), "cwd": os.getcwd(), "model": "fake",
           "apiKeySource": source})
     cost = float(sc.get("cost", 0.01))

@@ -5,9 +5,10 @@ A matching call must contain the claim's words in order (extra flags in the real
 """
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
+
+from .runner import events
 
 PLACEHOLDER = re.compile(r"<[^>]+>|\.\.\.|…")
 
@@ -32,14 +33,7 @@ def matches(claim: str, cmd: str) -> bool:
 
 def bash_commands(transcript: str | Path) -> list[str]:
     cmds: list[str] = []
-    path = Path(transcript)
-    if not path.exists():
-        return cmds
-    for line in path.read_text(errors="replace").splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    for event in events(transcript):
         if event.get("type") != "assistant":
             continue
         for part in (event.get("message") or {}).get("content", []) or []:

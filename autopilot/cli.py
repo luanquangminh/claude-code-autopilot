@@ -36,24 +36,19 @@ def add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--model", help="override the plan's model")
     p.add_argument("--max-turns", type=int, default=None, help="pass --max-turns to claude (default: plan.global.max_turns)")
     p.add_argument("--allow-api-key", action="store_true",
-                   help="permit sessions to use ANTHROPIC_API_KEY or a key helper. Default: subscription only; key "
-                        "variables are scrubbed and a session that reports a key halts the run")
+                   help="permit sessions to use an API key (default: the subscription login only; see README)")
 
 
 def run_config(args: argparse.Namespace, run_dir: Path, plan: Plan | None = None) -> RunConfig:
     max_turns = args.max_turns if args.max_turns is not None else (plan.glob.max_turns if plan else None)
     return RunConfig(run_dir=run_dir, claude_cmd=shlex.split(args.claude_cmd), model=args.model,
-                     max_turns=max_turns, log=log, auth=auth_of(args))
-
-
-def auth_of(args: argparse.Namespace) -> str:
-    return "api-key" if getattr(args, "allow_api_key", False) else "subscription"
+                     max_turns=max_turns, log=log, allow_api_key=args.allow_api_key)
 
 
 def session_config(args: argparse.Namespace, model: str, budget: float, timeout_s: float) -> SessionConfig:
     return SessionConfig(claude_cmd=shlex.split(args.claude_cmd), model=args.model or model,
                          max_turns=args.max_turns or 60, max_budget_usd=budget, timeout_s=timeout_s,
-                         auth=auth_of(args))
+                         allow_api_key=args.allow_api_key)
 
 
 def cmd_lint(args: argparse.Namespace) -> int:

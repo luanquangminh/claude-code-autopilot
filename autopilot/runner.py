@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 import time
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -32,7 +33,7 @@ class SessionConfig:
     disable_slash_commands: bool = True
     extra_args: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
-    auth: str = "subscription"         # scrub KEY_VARS; a session that reports a key is refused. "api-key" permits one
+    allow_api_key: bool = False        # default: scrub KEY_VARS and refuse a session that reports a key
 
 
 @dataclass
@@ -54,13 +55,10 @@ class SessionResult:
     has_result: bool = True       # a `result` event was seen (cost figures are real)
     stderr_tail: str = ""
     api_key_source: str | None = None   # init event `apiKeySource`: "none" means the subscription login
+    auth_violation: str | None = None   # why a subscription-only run must not start another session
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-
-    @property
-    def used_api_key(self) -> bool:
-        return self.api_key_source not in (None, "none")
 
 
 def build_argv(cfg: SessionConfig, prompt: str, schema: dict[str, Any] | None = None,
@@ -84,45 +82,37 @@ def build_argv(cfg: SessionConfig, prompt: str, schema: dict[str, Any] | None = 
     return argv
 
 
+def events(transcript: str | Path) -> Iterator[dict[str, Any]]:
+    """The JSON object events of a stream-json transcript, in order, streamed; other lines are skipped."""
+    transcript = Path(transcript)
+    if not transcript.exists():
+        return
+    with open(transcript, errors="replace") as f:
+        for line in f:
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(ev, dict):
+                yield ev
+
+
 def parse_transcript(transcript: Path) -> dict[str, Any] | None:
     """The last `result` event, or None when the run died before emitting one."""
     last: dict[str, Any] | None = None
-    if not transcript.exists():
-        return None
-    for line in transcript.read_text(errors="replace").splitlines():
-        try:
-            ev = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(ev, dict) and ev.get("type") == "result":
+    for ev in events(transcript):
+        if ev.get("type") == "result":
             last = ev
     return last
 
 
 def init_event(transcript: Path) -> dict[str, Any] | None:
     """The first `system`/`init` event: model, cwd and `apiKeySource` of the session."""
-    if not transcript.exists():
-        return None
-    for line in transcript.read_text(errors="replace").splitlines():
-        try:
-            ev = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(ev, dict) and ev.get("type") == "system" and ev.get("subtype") == "init":
-            return ev
-    return None
+    return next((ev for ev in events(transcript) if ev.get("type") == "system" and ev.get("subtype") == "init"), None)
 
 
 def transcript_has_events(transcript: Path) -> bool:
-    if not transcript.exists():
-        return False
-    for line in transcript.read_text(errors="replace").splitlines():
-        try:
-            if isinstance(json.loads(line), dict):
-                return True
-        except json.JSONDecodeError:
-            continue
-    return False
+    return next(events(transcript), None) is not None
 
 
 def run_session(cfg: SessionConfig, prompt: str, cwd: str | Path, out_dir: str | Path,
@@ -136,7 +126,7 @@ def run_session(cfg: SessionConfig, prompt: str, cwd: str | Path, out_dir: str |
     argv = build_argv(cfg, prompt, schema, system_prompt)
     (out_dir / f"{name}.argv.json").write_text(json.dumps(argv, indent=1))
     env = {**os.environ, **cfg.env}
-    if cfg.auth == "subscription":
+    if not cfg.allow_api_key:
         for k in KEY_VARS:
             env.pop(k, None)
     t0 = time.monotonic()
@@ -154,13 +144,17 @@ def run_session(cfg: SessionConfig, prompt: str, cwd: str | Path, out_dir: str |
             raise
     duration = time.monotonic() - t0
     ev, started = parse_transcript(transcript), transcript_has_events(transcript)
-    init = init_event(transcript)
-    source = str(init["apiKeySource"]) if init and "apiKeySource" in init else None
+    source = (init_event(transcript) or {}).get("apiKeySource")
+    violation = None
+    if not cfg.allow_api_key and source not in (None, "none"):
+        violation = (f"session used an API key ({source}); this run is subscription-only "
+                     "(pass --allow-api-key to permit it)")
     tail = "\n".join(stderr.read_text(errors="replace").splitlines()[-20:]) if stderr.exists() else ""
     if ev is None:
         return SessionResult(proc.returncode, "timeout" if timed_out else "no_result", True, 0.0, 0, "",
                              None, "", [], str(transcript), str(stderr), timed_out, duration,
-                             started=started, has_result=False, stderr_tail=tail, api_key_source=source)
+                             started=started, has_result=False, stderr_tail=tail,
+                             api_key_source=source, auth_violation=violation)
     so = ev.get("structured_output")
     return SessionResult(
         exit_code=proc.returncode,
@@ -174,4 +168,4 @@ def run_session(cfg: SessionConfig, prompt: str, cwd: str | Path, out_dir: str |
         permission_denials=list(ev.get("permission_denials") or []),
         transcript_path=str(transcript), stderr_path=str(stderr),
         timed_out=timed_out, duration_s=duration, started=True, has_result=True, stderr_tail=tail,
-        api_key_source=source)
+        api_key_source=source, auth_violation=violation)

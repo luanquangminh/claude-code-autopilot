@@ -137,11 +137,9 @@ def apply_cuts(plan: Plan, review: dict[str, Any]) -> list[str]:
     return []
 
 
-def key_problem(sess: SessionResult, cfg: SessionConfig, stage: str) -> Problem | None:
-    if cfg.auth == "subscription" and sess.used_api_key:
-        return Problem("api_key_used", f"{stage} session used an API key ({sess.api_key_source}); "
-                       "this run is subscription-only (pass --allow-api-key to permit it)")
-    return None
+def refusal(sess: SessionResult, stage: str) -> list[Problem]:
+    """A session the runner refused (an API key under a subscription-only run) ends the stage."""
+    return [Problem("api_key_used", f"{stage}: {sess.auth_violation}")] if sess.auth_violation else []
 
 
 def plan_pipeline(task: str, repo: str | Path, plan_id: str, cfg: SessionConfig, out_dir: str | Path,
@@ -152,12 +150,13 @@ def plan_pipeline(task: str, repo: str | Path, plan_id: str, cfg: SessionConfig,
     feedback: list[str] | None = None
     plan: Plan | None = None
     problems: list[Problem] = []
+    reviews: list[dict[str, Any]] = []
     for r in range(1, rounds + 1):
         log(f"plan: draft round {r}")
         plan, sess = draft_plan(task, repo, plan_id, cfg, out_dir, feedback, r)
         cost += sess.total_cost_usd
-        if bad := key_problem(sess, cfg, f"draft {r}"):
-            return None, [bad], [], cost
+        if bad := refusal(sess, f"draft {r}"):
+            return plan, bad, reviews, cost
         if plan is None:
             log(f"plan: draft {r} produced no plan ({sess.subtype})")
             problems = [Problem("no_plan", f"draft {r} returned no structured plan ({sess.subtype})")]
@@ -170,13 +169,12 @@ def plan_pipeline(task: str, repo: str | Path, plan_id: str, cfg: SessionConfig,
         feedback = [str(p) for p in problems]
     if plan is None or problems:
         return plan, problems, [], cost
-    reviews: list[dict[str, Any]] = []
     for r in range(1, rounds + 1):
         log(f"plan: review round {r}")
         review, sess = review_plan(plan, repo, cfg, out_dir, r)
         cost += sess.total_cost_usd
-        if bad := key_problem(sess, cfg, f"review {r}"):
-            return plan, [bad], reviews, cost
+        if bad := refusal(sess, f"review {r}"):
+            return plan, bad, reviews, cost
         if review is None:
             log(f"plan: review {r} returned nothing ({sess.subtype}); continuing without it")
             break
@@ -194,8 +192,8 @@ def plan_pipeline(task: str, repo: str | Path, plan_id: str, cfg: SessionConfig,
         log(f"plan: revision after review {r}")
         plan2, sess = draft_plan(task, repo, plan_id, cfg, out_dir, feedback, rounds + r)
         cost += sess.total_cost_usd
-        if bad := key_problem(sess, cfg, f"revision {r}"):
-            return plan, [bad], reviews, cost
+        if bad := refusal(sess, f"revision {r}"):
+            return plan, bad, reviews, cost
         if plan2 is None:
             break
         plan2.base_sha = commit_judge_files(plan2, repo)
