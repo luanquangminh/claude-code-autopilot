@@ -1,12 +1,18 @@
 """Subscription-only sessions: key variables never reach a session; a session that reports a key stops the run."""
+import contextlib
+import io
 import os
+import shlex
+import sys
 import tempfile
 import unittest
 from unittest import mock
 from pathlib import Path
 
+from autopilot.cli import main
+from autopilot.plan import save
 from autopilot.sessions import plan_pipeline
-from tests.helpers import fake_session_config, full_run, head, make_repo, pager_item
+from tests.helpers import FAKE, fake_env, fake_session_config, full_run, head, make_plan, make_repo, pager_item
 
 
 class SubscriptionOnlyTest(unittest.TestCase):
@@ -49,6 +55,19 @@ class SubscriptionOnlyTest(unittest.TestCase):
         self.assertEqual([p.code for p in problems], ["api_key_used"])
         self.assertEqual(reviews, [])
         self.assertEqual(head(repo), base)       # the refused draft's judge files were never committed
+
+    def test_review_command_refuses_a_key_session(self):
+        repo = make_repo("b-scope", self.root / "repo")
+        plan_path = self.root / "plan.json"
+        save(make_plan("r1", head(repo), [pager_item()]), plan_path)
+        fake = f"{shlex.quote(sys.executable)} {shlex.quote(str(FAKE))}"
+        argv = ["review", str(plan_path), "--repo", str(repo), "--run-dir", str(self.root / "run"), "--claude-cmd", fake]
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, {**fake_env(self.root, ["review"]), "FAKE_CLAUDE_KEY_SOURCE": "apiKeyHelper"}), \
+                contextlib.redirect_stdout(out):
+            rc = main(argv)
+        self.assertEqual(rc, 2)
+        self.assertIn("FAIL session used an API key (apiKeyHelper)", out.getvalue())
 
 
 if __name__ == "__main__":

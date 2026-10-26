@@ -223,6 +223,9 @@ def cmd_review(args: argparse.Namespace) -> int:
     run_dir = Path(args.run_dir) if args.run_dir else default_run_dir(repo, plan.plan_id)
     scfg = session_config(args, args.model or plan.glob.model, args.budget, args.timeout)
     review, sess = review_plan(plan, repo, scfg, run_dir / "planning", 1)
+    if sess.auth_violation:
+        print(f"FAIL {sess.auth_violation}")
+        return 2
     import json
     print(json.dumps(review, indent=2) if review else f"no review ({sess.subtype})")
     print(f"cost: ${sess.total_cost_usd:.2f}")
