@@ -69,19 +69,38 @@ def in_scope(path: str, scope: list[str]) -> bool:
     return any(path == s or path.startswith(s.rstrip("/") + "/") for s in scope)
 
 
+def _segments(cmd: str) -> list[list[str]]:
+    """Tokens of `cmd` split on unquoted &&, || and ;."""
+    try:
+        lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        toks = list(lex)
+    except ValueError:
+        toks = cmd.split()
+    segs: list[list[str]] = [[]]
+    for t in toks:
+        if t in ("&&", "||", ";"):
+            segs.append([])
+        else:
+            segs[-1].append(t)
+    return [s for s in segs if s]
+
+
 def canary_for(item: Item, checkout: Path) -> tuple[Path, str] | None:
     """A test file that the judge must FAIL on, or None when none can be derived.
 
     Explicit `judge.canary {path, content}` wins. Otherwise `unittest discover` (honouring -s/-p)
-    and pytest on a directory are recognised. A `-k` filter disables derivation.
+    and pytest on a directory are recognised. Compound commands (&&, ||, ;) use the first
+    recognised segment only. A `-k` filter in that segment disables derivation.
     """
     c = item.judge.canary
     if c and c.get("path") and c.get("content"):
         return checkout / str(c["path"]), str(c["content"])
-    try:
-        toks = shlex.split(item.judge.cmd)
-    except ValueError:
-        toks = item.judge.cmd.split()
+    for toks in _segments(item.judge.cmd):
+        if ("unittest" in toks and "discover" in toks) or "pytest" in toks:
+            break
+    else:
+        return None
     if "-k" in toks or any(t.startswith("-k=") for t in toks):
         return None
     nonce = secrets.token_hex(4)
