@@ -1,0 +1,95 @@
+{
+  "plan_id": "261028-0014-two-robustness-gaps-in",
+  "task": "Two robustness gaps in this orchestrator. (1) CLI errors must be clean: running 'python3 -m autopilot lint|lock|run|plan|review' with a --repo path that does not exist or is not a git repository, or with a plan file that is missing or not valid JSON, must print a single line starting with 'FAIL ' to stdout and exit 2, never a Python traceback. (2) canary_for() in autopilot/judge.py must handle compound judge commands: split judge.cmd on '&&', '||' and ';', derive the canary from the first segment that is a recognised 'unittest discover' or pytest-on-a-directory invocation, and ignore -s/-p/-k tokens that belong to the other segments. The existing suite runs with 'python3 -m unittest discover -s tests -t .' and must stay green.",
+  "base_sha": "17da3370c3286b15b856149c7bfb0b6b3e0fddf4",
+  "contract_ref": "refs/contract/261028-0014-two-robustness-gaps-in",
+  "global": {
+    "max_cost_usd": 20.0,
+    "max_wall_minutes": 180,
+    "max_attempts_total": 30,
+    "no_progress_limit": 2,
+    "scope_policy": "fail",
+    "strict_receipts": false,
+    "model": "claude-sonnet-5-5",
+    "max_turns": 60,
+    "max_budget_usd_per_attempt": 2.0,
+    "attempt_timeout_s": 1800,
+    "allowed_tools": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash(python3:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)"
+    ],
+    "constraints": "One branch carries both items in order. Do not edit judge.paths files (tests/test_cli_errors.py, tests/test_canary_compound.py, tests/helpers.py). No new dependencies. The existing suite 'python3 -m unittest discover -s tests -t .' must stay green after each item (after item 1 it is red only on tests/test_canary_compound.py until item 2 lands). Keep stdout 'FAIL ' format and exit code 2 as already used by lint problems."
+  },
+  "items": [
+    {
+      "id": "cli-clean-errors",
+      "goal": "lint, lock, run, review and plan print one 'FAIL ...' line on stdout and exit 2 (no traceback) for a nonexistent --repo, a non-git --repo, a missing plan file, or a plan file that is not valid JSON",
+      "scope": [
+        "autopilot/cli.py",
+        "autopilot/gitx.py",
+        "autopilot/plan.py"
+      ],
+      "target": {
+        "value": "4 tests / 18 subcases green, 0 tracebacks",
+        "state": "proven (tests/test_cli_errors.py is red today: ran and failed)"
+      },
+      "stop_line": 3,
+      "interfaces": "CLI contract only: stdout exactly one line starting 'FAIL ', exit code 2, stderr free of 'Traceback'. Prefer a single guard in main() around args.fn (catch FileNotFoundError, json.JSONDecodeError, NotADirectoryError, gitx's git-failure exception, and validate --repo is an existing git work tree before dispatch) rather than per-command try blocks. Do not change exit codes 0/1/3/4 for other paths.",
+      "notes": "Valid-but-bad-argument cases only; the 'report' command is not in scope. The tests use a plan built from tests/helpers.py, so helpers.py is locked.",
+      "judge": {
+        "cmd": "python3 -m unittest tests.test_cli_errors",
+        "paths": [
+          "tests/test_cli_errors.py",
+          "tests/helpers.py"
+        ],
+        "sha256": {
+          "tests/test_cli_errors.py": "d81999257e876d3dfef2009747fed971ebe573e8f2c3b13336f69e2c34323e27",
+          "tests/helpers.py": "70fbb85f834f5c1522ac0e308a387328d438e7e8661bd1ab2924bbe5c55c6af1"
+        },
+        "timeout_s": 600,
+        "canary": null,
+        "pass": "exit 0"
+      }
+    },
+    {
+      "id": "canary-compound-cmds",
+      "goal": "canary_for() splits judge.cmd on '&&', '||' and ';', derives the canary from the first segment that is a recognised 'unittest discover' or pytest-on-a-directory invocation, and ignores -s/-p/-k tokens belonging to other segments",
+      "scope": [
+        "autopilot/judge.py"
+      ],
+      "target": {
+        "value": "8 compound-canary tests green and the full existing suite green",
+        "state": "proven (test_canary_compound is red today: 5 of 8 cases fail; full suite green before this change)"
+      },
+      "stop_line": 3,
+      "interfaces": "canary_for(item, checkout) -> tuple[Path, str] | None keeps its signature. Explicit judge.canary still wins. A -k inside the chosen segment still returns None; -k elsewhere does not. No recognised segment -> None. Single-segment commands behave exactly as before.",
+      "notes": "Split must respect quoting (e.g. -p 'a;b*.py' should not split inside quotes); a shlex-based tokenizer with punctuation_chars or a quote-aware splitter both work. This judge depends on item 1 being merged because the full suite includes tests/test_cli_errors.py.",
+      "judge": {
+        "cmd": "python3 -m unittest tests.test_canary_compound && python3 -m unittest discover -s tests -t .",
+        "paths": [
+          "tests/test_canary_compound.py",
+          "tests/test_cli_errors.py",
+          "tests/helpers.py"
+        ],
+        "sha256": {
+          "tests/test_canary_compound.py": "8fc2783066b131fa18aefc44454ace9ad8bf5873d27548b355a3ae1a5f899964",
+          "tests/test_cli_errors.py": "d81999257e876d3dfef2009747fed971ebe573e8f2c3b13336f69e2c34323e27",
+          "tests/helpers.py": "70fbb85f834f5c1522ac0e308a387328d438e7e8661bd1ab2924bbe5c55c6af1"
+        },
+        "timeout_s": 600,
+        "canary": null,
+        "pass": "exit 0"
+      }
+    }
+  ],
+  "next_rung": "Make compound-command handling shared: have lint/judge parse judge commands into segments once (also catching `cd sub && ...` working-directory changes and `a&&b` without spaces), and give the CLI a typed error class (e.g. CliError) so every command, including `report`, reports user mistakes uniformly instead of the single guard in main()."
+}
