@@ -232,6 +232,14 @@ def cmd_review(args: argparse.Namespace) -> int:
     return 0 if review else 2
 
 
+def check_repo(repo: Path) -> None:
+    if not repo.is_dir():
+        raise NotADirectoryError(f"--repo {repo} is not an existing directory")
+    p = gitx.git(repo, "rev-parse", "--is-inside-work-tree", check=False)
+    if p.returncode != 0 or p.stdout.strip() != b"true":
+        raise gitx.GitError(f"--repo {repo} is not a git work tree")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="autopilot", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -255,4 +263,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("plan"); p.add_argument("--budget", type=float, default=1.0); p.add_argument("--timeout", type=float, default=600)
     add_common(p); p.set_defaults(fn=cmd_review)
     args = ap.parse_args(argv)
-    return args.fn(args)
+    try:
+        if hasattr(args, "repo"):
+            check_repo(Path(args.repo))
+        return args.fn(args)
+    except (OSError, ValueError, gitx.GitError) as e:   # ValueError covers json.JSONDecodeError
+        msg = " ".join(f"{type(e).__name__}: {e}".split())
+        print(f"FAIL {msg}")
+        return 2
