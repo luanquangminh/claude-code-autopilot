@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claude-code-autopilot"
+version = "0.1.0"
+description = "Unattended Claude Code loop: locked plan contract, fresh session per attempt, executable judge, branch left for review"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/luanquangminh/claude-code-autopilot"
+
+[project.scripts]
+autopilot = "autopilot.cli:main"
+
+[tool.setuptools]
+packages = ["autopilot"]
